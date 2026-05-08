@@ -1,90 +1,91 @@
 import * as core from '@actions/core'
+import * as github from '@actions/github'
+import { Endpoints } from '@octokit/types'
 import {
-  EMAIL,
-  API_TOKEN,
-  SUBDOMAIN,
-  RELEASE_NAME,
-  PROJECT,
-  CREATE,
-  TICKETS,
+  JIRA_EMAIL, JIRA_API_TOKEN, JIRA_BASE_URL, JIRA_PROJECT, JIRA_ISSUE_FILTER,
+  GITHUB_API_TOKEN, GITHUB_ORG, GITHUB_REPO,
   DRY_RUN
 } from './env'
 import {Project} from './api'
 import {Version} from './models'
 
+function isoDateToJiraDate(iso_date: string): string {
+  // GitHub gives us timestamps in ISO 8601 format, JIRA expects its own custom format.
+  // JS does not have any native support for date formatting, so we have to roll our own.
+  const date = new Date(iso_date)
+  const month_pad = (date.getMonth() + 1).toString().padStart(2, "0")
+  const day_pad = date.getDate().toString().padStart(2, "0")
+  const hours_pad = date.getHours().toString().padStart(2, "0")
+  const minutes_pad = date.getMinutes().toString().padStart(2, "0")
+  return `${date.getFullYear()}-${month_pad}-${day_pad} ${hours_pad}:${minutes_pad}`
+}
+
 async function run(): Promise<void> {
   try {
-    if (DRY_RUN === 'ci') {
-      core.info(`email ${EMAIL}`)
-      core.info(`project ${PROJECT}`)
-      core.info(`subdomain ${SUBDOMAIN}`)
-      core.info(`release ${RELEASE_NAME}`)
-      core.info(`create ${CREATE}`)
-      core.info(`tickets ${TICKETS}`)
-      return
-    }
-
-    if (DRY_RUN === 'true') {
-      core.info(`email ${EMAIL}`)
-      core.info(`project ${PROJECT}`)
-      core.info(`subdomain ${SUBDOMAIN}`)
-      core.info(`release ${RELEASE_NAME}`)
-      core.info(`create ${CREATE}`)
-      core.info(`tickets ${TICKETS}`)
-      const project = await Project.create(EMAIL, API_TOKEN, PROJECT, SUBDOMAIN)
-      core.info(`Project loaded ${project.project?.id}`)
-      const version = project.getVersion(RELEASE_NAME)
-
-      if (version === undefined) {
-        core.info(`Version ${RELEASE_NAME} not found`)
-      } else {
-        core.info(`Version ${RELEASE_NAME} found`)
+    // Fetch releases from GitHub, filter out drafts and prereleases, sort by date.
+    const git = github.getOctokit(GITHUB_API_TOKEN)
+    type listReleasesResponse = Endpoints["GET /repos/{owner}/{repo}/releases"]["response"]
+    let public_releases: listReleasesResponse["data"] = []
+    // let public_releases: [any?] = []  // TODO
+    const release_iter = git.paginate.iterator(git.rest.repos.listReleases, {owner: GITHUB_ORG, repo: GITHUB_REPO})
+    for await (const { data: releases } of release_iter) {
+      for (const release of releases) {
+        if (!release.draft && !release.prerelease && !!release.name && !!release.published_at) {
+          public_releases.push(release)
+        }
       }
-      return
     }
+    public_releases.sort((a, b) => a.published_at!.localeCompare(b.published_at!))
 
-    const project = await Project.create(EMAIL, API_TOKEN, PROJECT, SUBDOMAIN)
+    // Check if release ("Version") exists in JIRA. If not, create the release and assign all relevant issues.
+    // Do not touch existing releases.
+    const jira_project = await Project.create(JIRA_EMAIL, JIRA_API_TOKEN, JIRA_PROJECT, JIRA_BASE_URL)
+    core.debug(`JIRA project loaded: ${jira_project.project?.id}`)
 
-    core.debug(`Project loaded ${project.project?.id}`)
+    let prev_release = null
+    for (const release of public_releases) {
+      let version = jira_project.getVersion(release.name!)
+      if (version === undefined) {
+        core.debug(`Version ${release.name} not found`)
 
-    let version = project.getVersion(RELEASE_NAME)
-
-    if (version === undefined) {
-      core.debug(`Version ${RELEASE_NAME} not found`)
-      if (CREATE === 'true') {
-        core.debug(`Version ${RELEASE_NAME} is going to the created`)
         const versionToCreate: Version = {
-          name: RELEASE_NAME,
+          name: release.name!,
           archived: false,
           released: true,
-          releaseDate: new Date().toISOString(),
-          projectId: Number(project.project?.id)
+          releaseDate: release.published_at!,
+          projectId: Number(jira_project.project?.id),
+          description: `${release.body ?? ""}\n\nGitHub: ${release.url ?? "-"}`
         }
-        version = await project.createVersion(versionToCreate)
-        core.debug(versionToCreate.name)
-      }
-    } else {
-      core.debug(`Version ${RELEASE_NAME} found and is going to be updated`)
-      const versionToUpdate: Version = {
-        ...version,
-        self: undefined,
-        released: true,
-        releaseDate: new Date().toISOString(),
-        userReleaseDate: undefined
-      }
-      version = await project.updateVersion(versionToUpdate)
-    }
+        if (DRY_RUN !== 'true') {
+          version = await jira_project.createVersion(versionToCreate)
+        } else {
+          core.notice(`Dry run, not creating version ${release.name}.`)
+          version = versionToCreate
+        }
 
-    if (TICKETS !== '') {
-      const tickets = TICKETS.split(',')
-      // eslint-disable-next-line github/array-foreach
-      tickets.forEach(ticket => {
-        core.debug(`Going to update ticket ${ticket}`)
-        if (version?.id !== undefined) project.updateIssue(ticket, version?.id)
-      })
+        let query = `project IN (${JIRA_PROJECT}) AND fixVersion = EMPTY`
+        if (JIRA_ISSUE_FILTER) {
+          query += ` AND ${JIRA_ISSUE_FILTER}`
+        }
+        if (prev_release) {
+          query += ` AND resolved > "${isoDateToJiraDate(prev_release.published_at!)}"`
+        }
+        query += ` AND resolved < "${isoDateToJiraDate(release.published_at!)}"`
+        core.debug(query)
+
+        const issues = await jira_project.searchIssues(query)
+        for (const issue of issues) {
+          if (version?.id !== undefined) {
+            jira_project.updateIssue(issue, version.id)
+          } else {
+            core.notice(`Dry run, not updating issue ${issue}.`)
+          }
+        }
+
+        prev_release = release
+      }
     }
-  } catch (_e) {
-    const e: Error = _e
+  } catch (e: any) {
     core.setFailed(e)
   }
 }

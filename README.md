@@ -1,13 +1,12 @@
 # Jira Release Action
 
-<p align="center">
-  <a href="https://github.com/charpi/jira-release-actions"><img alt="jira-release-action status" src="https://github.com/carpi/jira-release-actions/workflows/build-test/badge.svg"></a>
-</p>
+This Github action exports Github releases to Jira. By running this action in a workflow that gets
+triggered by new releases, "project versions" on Jira can be automatically synchronized with Github releases.
+Jira issues that match a specified search query and have been resolved in the time span between the new
+and the previous release will have their 'Fix Version' field set to the new release.
 
-This Github action connects your CI and your Jira instance by creating releases as part of your CI process.
-
-The action can either mark an existing release as released or directly create a new one base on a tag name.
-The action can also automatically update the 'Fix Version' field of a list of Jira issues.
+Development happens on branch `inverso-devel`. Branch `main` contains the original version of the code
+and is being preserved so that we can update our fork with mainline development if necessary.
 
 ## Usage
 
@@ -15,40 +14,64 @@ The action can also automatically update the 'Fix Version' field of a list of Ji
 
 | Name | Description | Required |
 |---|---|---|
-| email  | Jira login | Y |
-| api_token | Jira api token | Y |
-| subdomain | Jira cloud instance. '[domain].atlassian.net' | Y |
-| jira_project | Key of the jira project | Y |
-| release_name | Name of the release | Y |
-| create | Boolean. Create automatically a jira release| N (default: false ) |
-| tickets | Comma separated list of ticket IDs to include in the release. Update the first release-version. | N (default: '') |
+| jira_email  | Jira login | Y |
+| jira_api_token | Jira API token | Y |
+| jira_base_url | Base URL of the JIRA API (see below) | Y |
+| jira_project | Key of the Jira project | Y |
+| jira_issue_filter | Additional filtering criteria for issues | N |
+| github_api_token | GitHub PAT | Y |
+| github_org | GitHub repository owner | Y |
+| github_repo | GitHub repository name | Y |
 | dry_run | Dump actions that would be taken | N (default: false) |
 
-### Example
+### JIRA Parameters
+
+An API token can either be unscoped (access to all Atlassian products with the permissions of
+the token creator) or scoped (access is limited to selected products and operations - recommended).
+This Action requires a scoped token with access to Jira and the following permissions ("Classic"):
+manage:jira-project, read:jira-work, write:jira-work
+
+Parameter `jira_email` must be set to the e-mail address of the user who created the token.
+
+The base URL depends on the type of token: When using an unscoped token, the correct base URL
+is `[domain].atlassian.net`, e.g. `inversocloud.atlassian.net`.
+When using a scoped token, the base URL has the following format:
+`api.atlassian.com/ex/jira/[cloudId]`.
+The cloud ID can be obtained by calling `curl "https://[domain].atlassian.net/_edge/tenant_info"`.
+At the time of writing, the ID of `inversocloud` is `fb557a4a-a743-4adf-bf61-1accd10cded5`.
+
+### GitHub Parameters
+
+In a GitHub Workflow, set `github_api_token` to `${{ secrets.GITHUB_TOKEN }}`.
+
+### Example Workflow
 
 ```yaml
-jobs:
- get-next-app-version:
-    name: Get App Version Number
-    runs-on: ubuntu-latest
-    outputs:
-      version-id: ${{ steps.get-version.outputs.id }}
-    steps:
-      ...gets the latest version
+name: Export new releases to Jira
+on:
+  release:
+    types: [published]
+  workflow_dispatch
 
-  release-next-app-version:
-    name: Release Jira Version
+jobs:
+  main:
     runs-on: ubuntu-latest
     steps:
-      uses: charpi/jira-release-action@latest
-      with:
-        email: ${{ secrets.JIRA_EMAIL }}
-        api-token: ${{ secrets.JIRA_TOKEN }}
-        subdomain: example
-        release_name: ${{ needs.get-next-app-version.outputs.version-id}}
+      - name: Export releases
+        uses: inverso-dna/jira-release-action@inverso-devel
+        with:
+          jira_email: ${{ secrets.JIRA_EMAIL }}
+          jira_api_token: ${{ secrets.JIRA_TOKEN }}
+          jira_base_url: inversocloud.atlassian.net
+          jira_project: IDNA
+          jira_issue_filter: 'component = "BDAG-SCHADEN"'
+          github_api_token: ${{ secrets.GITHUB_TOKEN }}
+          github_org: inverso-dna
+          github_repo: lab-bdschad-snowflake
 ```
 
-## Reference
+### Local Testing
 
-* [Jira Basic authentication](https://developer.atlassian.com/server/jira/platform/basic-authentication/)
-* [Code inspiration](https://github.com/jimyang-9/release-jira-fix-version/)
+1. Install dependencies and build the Action: `npm install && npm run build && npm run package`
+2. Fill in the missing API tokens in `run-local.test.ts`.
+3. Run the Action: `npx tsx run-local.test.ts`

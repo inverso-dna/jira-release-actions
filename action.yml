@@ -1,32 +1,33 @@
 name: 'jira-release-action'
 description: 'Create or Update a Jira release'
-author: 'Nicolas Charpentier'
+author: 'Nicolas Charpentier, I-DNA Team'
 inputs:
-  email:
+  jira_email:
     required: true
     description: Email address associated with api token
-  api_token:
+  jira_api_token:
     required: true
     description: Jira API token
-  subdomain:
+  jira_base_url:
     required: true
-    description: '{subdomain}.atlassian.net'
+    description: Jira API base URL
   jira_project:
     required: true
-    description: 'Id of the JIRA project'
-  release_name:
+    description: Name of the JIRA project
+  jira_issue_filter:
+    description: boolean JQL expression to identify suitable issues
+    required: false
+  github_api_token:
     required: true
-    description: Name of the release
-  create:
-    required: false
-    description: Automatically create the release if not present in Jira
-    default: 'false' 
-  tickets:
-    required: false
-    description: Comma separated list of ticket IDs to include in the release. Update the first release-version.
-    default: ''
+    description: GitHub API token (PAT)
+  github_org:
+    required: true
+    description: GitHub repository owner
+  github_repo:
+    required: true
+    description: GitHub repository name
   dry_run:
-    description: Dump the config
+    description: Query GitHub and Jira, but do not perform any updates.
     required: false
     default: 'false'
 
