@@ -9,12 +9,15 @@ import {
 import {Project} from './api'
 import {Version} from './models'
 
-function isoDateToJiraDate(iso_date: string): string {
+function isoDateToJiraDate(iso_date: string, strip_time: boolean): string {
   // GitHub gives us timestamps in ISO 8601 format, JIRA expects its own custom format.
   // JS does not have any native support for date formatting, so we have to roll our own.
   const date = new Date(iso_date)
   const month_pad = (date.getMonth() + 1).toString().padStart(2, "0")
   const day_pad = date.getDate().toString().padStart(2, "0")
+  if (strip_time) {
+    return `${date.getFullYear()}-${month_pad}-${day_pad}`
+  }
   const hours_pad = date.getHours().toString().padStart(2, "0")
   const minutes_pad = date.getMinutes().toString().padStart(2, "0")
   return `${date.getFullYear()}-${month_pad}-${day_pad} ${hours_pad}:${minutes_pad}`
@@ -51,10 +54,11 @@ async function run(): Promise<void> {
           name: release.name!,
           archived: false,
           released: true,
-          releaseDate: release.published_at!,
+          releaseDate: isoDateToJiraDate(release.published_at!, true),
           projectId: Number(jira_project.project?.id),
           description: `${release.body ?? ""}\n\nGitHub: ${release.url ?? "-"}`
         }
+        core.debug(JSON.stringify(versionToCreate))
         if (DRY_RUN !== 'true') {
           version = await jira_project.createVersion(versionToCreate)
         } else {
@@ -67,9 +71,9 @@ async function run(): Promise<void> {
           query += ` AND ${JIRA_ISSUE_FILTER}`
         }
         if (prev_release) {
-          query += ` AND resolved > "${isoDateToJiraDate(prev_release.published_at!)}"`
+          query += ` AND resolved > "${isoDateToJiraDate(prev_release.published_at!, false)}"`
         }
-        query += ` AND resolved < "${isoDateToJiraDate(release.published_at!)}"`
+        query += ` AND resolved < "${isoDateToJiraDate(release.published_at!, false)}"`
         core.debug(query)
 
         const issues = await jira_project.searchIssues(query)
