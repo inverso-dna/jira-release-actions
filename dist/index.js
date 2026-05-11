@@ -48057,7 +48057,7 @@ class Project {
 const toMoreDescriptiveError = (error) => {
     if (error instanceof axios_AxiosError) {
         const e = error;
-        let msg = `error: ${e.request?.method} ${e.response?.config.url} ${e.response?.status}`;
+        let msg = `${e.request?.method} ${e.response?.config.url} ${e.response?.status}`;
         const data = e.response?.data;
         if (Array.isArray(data.errorMessages)) {
             msg += ` - ${data.errorMessages[0]}`;
@@ -48075,12 +48075,15 @@ const toMoreDescriptiveError = (error) => {
 
 
 
-function isoDateToJiraDate(iso_date) {
+function isoDateToJiraDate(iso_date, strip_time) {
     // GitHub gives us timestamps in ISO 8601 format, JIRA expects its own custom format.
     // JS does not have any native support for date formatting, so we have to roll our own.
     const date = new Date(iso_date);
     const month_pad = (date.getMonth() + 1).toString().padStart(2, "0");
     const day_pad = date.getDate().toString().padStart(2, "0");
+    if (strip_time) {
+        return `${date.getFullYear()}-${month_pad}-${day_pad}`;
+    }
     const hours_pad = date.getHours().toString().padStart(2, "0");
     const minutes_pad = date.getMinutes().toString().padStart(2, "0");
     return `${date.getFullYear()}-${month_pad}-${day_pad} ${hours_pad}:${minutes_pad}`;
@@ -48090,7 +48093,6 @@ async function run() {
         // Fetch releases from GitHub, filter out drafts and prereleases, sort by date.
         const git = getOctokit(GITHUB_API_TOKEN);
         let public_releases = [];
-        // let public_releases: [any?] = []  // TODO
         const release_iter = git.paginate.iterator(git.rest.repos.listReleases, { owner: GITHUB_ORG, repo: GITHUB_REPO });
         for await (const { data: releases } of release_iter) {
             for (const release of releases) {
@@ -48113,10 +48115,11 @@ async function run() {
                     name: release.name,
                     archived: false,
                     released: true,
-                    releaseDate: release.published_at,
+                    releaseDate: isoDateToJiraDate(release.published_at, true),
                     projectId: Number(jira_project.project?.id),
                     description: `${release.body ?? ""}\n\nGitHub: ${release.url ?? "-"}`
                 };
+                core_debug(JSON.stringify(versionToCreate));
                 if (DRY_RUN !== 'true') {
                     version = await jira_project.createVersion(versionToCreate);
                 }
@@ -48129,9 +48132,9 @@ async function run() {
                     query += ` AND ${JIRA_ISSUE_FILTER}`;
                 }
                 if (prev_release) {
-                    query += ` AND resolved > "${isoDateToJiraDate(prev_release.published_at)}"`;
+                    query += ` AND resolved > "${isoDateToJiraDate(prev_release.published_at, false)}"`;
                 }
-                query += ` AND resolved < "${isoDateToJiraDate(release.published_at)}"`;
+                query += ` AND resolved < "${isoDateToJiraDate(release.published_at, false)}"`;
                 core_debug(query);
                 const issues = await jira_project.searchIssues(query);
                 for (const issue of issues) {
