@@ -51,14 +51,14 @@ name: Export new releases to Jira
 on:
   release:
     types: [published]
-  workflow_dispatch
+  workflow_dispatch:
 
 jobs:
   main:
     runs-on: ubuntu-latest
     steps:
       - name: Export releases
-        uses: inverso-dna/jira-release-action@inverso-devel
+        uses: inverso-dna/jira-release-actions@inverso-devel
         with:
           jira_email: ${{ secrets.JIRA_EMAIL }}
           jira_api_token: ${{ secrets.JIRA_TOKEN }}

@@ -26,7 +26,6 @@ async function run(): Promise<void> {
     const git = github.getOctokit(GITHUB_API_TOKEN)
     type listReleasesResponse = Endpoints["GET /repos/{owner}/{repo}/releases"]["response"]
     let public_releases: listReleasesResponse["data"] = []
-    // let public_releases: [any?] = []  // TODO
     const release_iter = git.paginate.iterator(git.rest.repos.listReleases, {owner: GITHUB_ORG, repo: GITHUB_REPO})
     for await (const { data: releases } of release_iter) {
       for (const release of releases) {
