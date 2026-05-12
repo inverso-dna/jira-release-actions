@@ -15,7 +15,10 @@ inputs:
     required: true
     description: Name of the JIRA project
   jira_issue_filter:
-    description: boolean JQL expression to identify suitable issues
+    description: Boolean JQL expression to identify suitable issues
+    required: false
+  jira_version_prefix:
+    description: Prefix for release names on JIRA
     required: false
   github_api_token:
     required: true

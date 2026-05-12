@@ -41003,6 +41003,7 @@ const JIRA_API_TOKEN = getInput('jira_api_token', { required: true });
 const JIRA_BASE_URL = getInput('jira_base_url', { required: true });
 const JIRA_PROJECT = getInput('jira_project', { required: true });
 const JIRA_ISSUE_FILTER = getInput('jira_issue_filter', { required: false });
+const JIRA_VERSION_PREFIX = getInput('jira_version_prefix', { required: false });
 const GITHUB_API_TOKEN = getInput('github_api_token', { required: true });
 const GITHUB_ORG = getInput('github_org', { required: true });
 const GITHUB_REPO = getInput('github_repo', { required: true });
@@ -48108,11 +48109,15 @@ async function run() {
         core_debug(`JIRA project loaded: ${jira_project.project?.id}`);
         let prev_release = null;
         for (const release of public_releases) {
-            let version = jira_project.getVersion(release.name);
+            let release_name = release.name;
+            if (JIRA_VERSION_PREFIX) {
+                release_name = `${JIRA_VERSION_PREFIX}${release_name}`;
+            }
+            let version = jira_project.getVersion(release_name);
             if (version === undefined) {
-                core_debug(`Version ${release.name} not found`);
+                core_debug(`Version ${release_name} not found`);
                 const versionToCreate = {
-                    name: release.name,
+                    name: release_name,
                     archived: false,
                     released: true,
                     releaseDate: isoDateToJiraDate(release.published_at, true),
@@ -48124,7 +48129,7 @@ async function run() {
                     version = await jira_project.createVersion(versionToCreate);
                 }
                 else {
-                    notice(`Dry run, not creating version ${release.name}.`);
+                    notice(`Dry run, not creating version ${release_name}.`);
                     version = versionToCreate;
                 }
                 let query = `project IN (${JIRA_PROJECT}) AND fixVersion = EMPTY`;

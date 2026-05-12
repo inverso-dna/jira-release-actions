@@ -2,7 +2,7 @@ import * as core from '@actions/core'
 import * as github from '@actions/github'
 import { Endpoints } from '@octokit/types'
 import {
-  JIRA_EMAIL, JIRA_API_TOKEN, JIRA_BASE_URL, JIRA_PROJECT, JIRA_ISSUE_FILTER,
+  JIRA_EMAIL, JIRA_API_TOKEN, JIRA_BASE_URL, JIRA_PROJECT, JIRA_ISSUE_FILTER, JIRA_VERSION_PREFIX,
   GITHUB_API_TOKEN, GITHUB_ORG, GITHUB_REPO,
   DRY_RUN
 } from './env'
@@ -46,12 +46,16 @@ async function run(): Promise<void> {
 
     let prev_release = null
     for (const release of public_releases) {
-      let version = jira_project.getVersion(release.name!)
+      let release_name = release.name!
+      if (JIRA_VERSION_PREFIX) {
+        release_name = `${JIRA_VERSION_PREFIX}${release_name}`
+      }
+      let version = jira_project.getVersion(release_name)
       if (version === undefined) {
-        core.debug(`Version ${release.name} not found`)
+        core.debug(`Version ${release_name} not found`)
 
         const versionToCreate: Version = {
-          name: release.name!,
+          name: release_name,
           archived: false,
           released: true,
           releaseDate: isoDateToJiraDate(release.published_at!, true),
@@ -62,7 +66,7 @@ async function run(): Promise<void> {
         if (DRY_RUN !== 'true') {
           version = await jira_project.createVersion(versionToCreate)
         } else {
-          core.notice(`Dry run, not creating version ${release.name}.`)
+          core.notice(`Dry run, not creating version ${release_name}.`)
           version = versionToCreate
         }
 

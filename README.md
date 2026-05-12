@@ -19,6 +19,7 @@ and is being preserved so that we can update our fork with mainline development 
 | jira_base_url | Base URL of the JIRA API (see below) | Y |
 | jira_project | Key of the Jira project | Y |
 | jira_issue_filter | Additional filtering criteria for issues | N |
+| jira_version_prefix | Prefix for release names | N |
 | github_api_token | GitHub PAT | Y |
 | github_org | GitHub repository owner | Y |
 | github_repo | GitHub repository name | Y |
@@ -65,6 +66,7 @@ jobs:
           jira_base_url: inversocloud.atlassian.net
           jira_project: IDNA
           jira_issue_filter: 'component = "BDAG-SCHADEN"'
+          jira_version_prefix: 'BDAG-SCHADEN-'
           github_api_token: ${{ secrets.GITHUB_TOKEN }}
           github_org: inverso-dna
           github_repo: lab-bdschad-snowflake
