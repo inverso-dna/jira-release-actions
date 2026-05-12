@@ -75,3 +75,7 @@ jobs:
 1. Install dependencies and build the Action: `npm install && npm run build && npm run package`
 2. Fill in the missing API tokens in `run-local.test.ts`.
 3. Run the Action: `npx tsx run-local.test.ts`
+
+### Development
+
+Remember to run `npm run build && npm run package` before commiting to update the generated JS code.
