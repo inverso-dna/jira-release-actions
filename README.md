@@ -31,6 +31,8 @@ An API token can either be unscoped (access to all Atlassian products with the p
 the token creator) or scoped (access is limited to selected products and operations - recommended).
 This Action requires a scoped token with access to Jira and the following permissions ("Classic"):
 manage:jira-project, read:jira-work, write:jira-work
+Important: The user who creates the token must be member of the grpup `grp_cjira_idna-pm` (or
+any other group that grants administration rights for the JIRA project in question).
 
 Parameter `jira_email` must be set to the e-mail address of the user who created the token.
 

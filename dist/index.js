@@ -48122,6 +48122,10 @@ async function run() {
                     released: true,
                     releaseDate: isoDateToJiraDate(release.published_at, true),
                     projectId: Number(jira_project.project?.id),
+                    /* TODO: GitHub provides Markdown, but JIRA treats it as plain text.
+                         Need to convert Markdown to a JSON representation as described here:
+                         https://github.com/jamsinclair/marklassian
+                     */
                     description: `${release.body ?? ""}\n\nGitHub: ${release.url ?? "-"}`
                 };
                 core_debug(JSON.stringify(versionToCreate));
@@ -48144,6 +48148,7 @@ async function run() {
                 const issues = await jira_project.searchIssues(query);
                 for (const issue of issues) {
                     if (version?.id !== undefined) {
+                        core_debug(`Assigning issue ${issue} to release.`);
                         jira_project.updateIssue(issue, version.id);
                     }
                     else {
