@@ -2,19 +2,22 @@ import * as core from '@actions/core'
 import * as github from '@actions/github'
 import { Endpoints } from '@octokit/types'
 import {
-  JIRA_EMAIL, JIRA_API_TOKEN, JIRA_BASE_URL, JIRA_PROJECT, JIRA_ISSUE_FILTER,
+  JIRA_EMAIL, JIRA_API_TOKEN, JIRA_BASE_URL, JIRA_PROJECT, JIRA_ISSUE_FILTER, JIRA_VERSION_PREFIX,
   GITHUB_API_TOKEN, GITHUB_ORG, GITHUB_REPO,
   DRY_RUN
 } from './env'
 import {Project} from './api'
 import {Version} from './models'
 
-function isoDateToJiraDate(iso_date: string): string {
+function isoDateToJiraDate(iso_date: string, strip_time: boolean): string {
   // GitHub gives us timestamps in ISO 8601 format, JIRA expects its own custom format.
   // JS does not have any native support for date formatting, so we have to roll our own.
   const date = new Date(iso_date)
   const month_pad = (date.getMonth() + 1).toString().padStart(2, "0")
   const day_pad = date.getDate().toString().padStart(2, "0")
+  if (strip_time) {
+    return `${date.getFullYear()}-${month_pad}-${day_pad}`
+  }
   const hours_pad = date.getHours().toString().padStart(2, "0")
   const minutes_pad = date.getMinutes().toString().padStart(2, "0")
   return `${date.getFullYear()}-${month_pad}-${day_pad} ${hours_pad}:${minutes_pad}`
@@ -26,7 +29,6 @@ async function run(): Promise<void> {
     const git = github.getOctokit(GITHUB_API_TOKEN)
     type listReleasesResponse = Endpoints["GET /repos/{owner}/{repo}/releases"]["response"]
     let public_releases: listReleasesResponse["data"] = []
-    // let public_releases: [any?] = []  // TODO
     const release_iter = git.paginate.iterator(git.rest.repos.listReleases, {owner: GITHUB_ORG, repo: GITHUB_REPO})
     for await (const { data: releases } of release_iter) {
       for (const release of releases) {
@@ -44,22 +46,31 @@ async function run(): Promise<void> {
 
     let prev_release = null
     for (const release of public_releases) {
-      let version = jira_project.getVersion(release.name!)
+      let release_name = release.name!
+      if (JIRA_VERSION_PREFIX) {
+        release_name = `${JIRA_VERSION_PREFIX}${release_name}`
+      }
+      let version = jira_project.getVersion(release_name)
       if (version === undefined) {
-        core.debug(`Version ${release.name} not found`)
+        core.debug(`Version ${release_name} not found`)
 
         const versionToCreate: Version = {
-          name: release.name!,
+          name: release_name,
           archived: false,
           released: true,
-          releaseDate: release.published_at!,
+          releaseDate: isoDateToJiraDate(release.published_at!, true),
           projectId: Number(jira_project.project?.id),
+          /* TODO: GitHub provides Markdown, but JIRA treats it as plain text.
+               Need to convert Markdown to a JSON representation as described here:
+               https://github.com/jamsinclair/marklassian
+           */
           description: `${release.body ?? ""}\n\nGitHub: ${release.url ?? "-"}`
         }
+        core.debug(JSON.stringify(versionToCreate))
         if (DRY_RUN !== 'true') {
           version = await jira_project.createVersion(versionToCreate)
         } else {
-          core.notice(`Dry run, not creating version ${release.name}.`)
+          core.notice(`Dry run, not creating version ${release_name}.`)
           version = versionToCreate
         }
 
@@ -68,14 +79,15 @@ async function run(): Promise<void> {
           query += ` AND ${JIRA_ISSUE_FILTER}`
         }
         if (prev_release) {
-          query += ` AND resolved > "${isoDateToJiraDate(prev_release.published_at!)}"`
+          query += ` AND resolved > "${isoDateToJiraDate(prev_release.published_at!, false)}"`
         }
-        query += ` AND resolved < "${isoDateToJiraDate(release.published_at!)}"`
+        query += ` AND resolved < "${isoDateToJiraDate(release.published_at!, false)}"`
         core.debug(query)
 
         const issues = await jira_project.searchIssues(query)
         for (const issue of issues) {
           if (version?.id !== undefined) {
+            core.debug(`Assigning issue ${issue} to release.`)
             jira_project.updateIssue(issue, version.id)
           } else {
             core.notice(`Dry run, not updating issue ${issue}.`)

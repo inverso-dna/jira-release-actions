@@ -19,6 +19,7 @@ and is being preserved so that we can update our fork with mainline development 
 | jira_base_url | Base URL of the JIRA API (see below) | Y |
 | jira_project | Key of the Jira project | Y |
 | jira_issue_filter | Additional filtering criteria for issues | N |
+| jira_version_prefix | Prefix for release names | N |
 | github_api_token | GitHub PAT | Y |
 | github_org | GitHub repository owner | Y |
 | github_repo | GitHub repository name | Y |
@@ -30,6 +31,8 @@ An API token can either be unscoped (access to all Atlassian products with the p
 the token creator) or scoped (access is limited to selected products and operations - recommended).
 This Action requires a scoped token with access to Jira and the following permissions ("Classic"):
 manage:jira-project, read:jira-work, write:jira-work
+Important: The user who creates the token must be member of the grpup `grp_cjira_idna-pm` (or
+any other group that grants administration rights for the JIRA project in question).
 
 Parameter `jira_email` must be set to the e-mail address of the user who created the token.
 
@@ -51,20 +54,21 @@ name: Export new releases to Jira
 on:
   release:
     types: [published]
-  workflow_dispatch
+  workflow_dispatch:
 
 jobs:
   main:
     runs-on: ubuntu-latest
     steps:
       - name: Export releases
-        uses: inverso-dna/jira-release-action@inverso-devel
+        uses: inverso-dna/jira-release-actions@inverso-devel
         with:
           jira_email: ${{ secrets.JIRA_EMAIL }}
           jira_api_token: ${{ secrets.JIRA_TOKEN }}
           jira_base_url: inversocloud.atlassian.net
           jira_project: IDNA
           jira_issue_filter: 'component = "BDAG-SCHADEN"'
+          jira_version_prefix: 'BDAG-SCHADEN-'
           github_api_token: ${{ secrets.GITHUB_TOKEN }}
           github_org: inverso-dna
           github_repo: lab-bdschad-snowflake
@@ -75,3 +79,7 @@ jobs:
 1. Install dependencies and build the Action: `npm install && npm run build && npm run package`
 2. Fill in the missing API tokens in `run-local.test.ts`.
 3. Run the Action: `npx tsx run-local.test.ts`
+
+### Development
+
+Remember to run `npm run build && npm run package` before commiting to update the generated JS code.

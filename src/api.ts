@@ -142,7 +142,7 @@ export class Project {
 const toMoreDescriptiveError = (error: unknown): Error | unknown => {
   if (error instanceof AxiosError) {
     const e : AxiosError = error
-    let msg = `error: ${e.request?.method} ${e.response?.config.url} ${e.response?.status}`
+    let msg = `${e.request?.method} ${e.response?.config.url} ${e.response?.status}`
     const data : any = e.response?.data
     if (Array.isArray(data.errorMessages)) {
       msg += ` - ${data.errorMessages[0]}`
